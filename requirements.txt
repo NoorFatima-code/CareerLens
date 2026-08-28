@@ -1,0 +1,17 @@
+# UI
+streamlit>=1.40,<2.0
+
+# Environment variables and secrets
+python-dotenv>=1.0,<2.0
+
+# PDF document loading
+pypdf>=5.0,<6.0
+
+# Embeddings and Gemini generation
+google-genai>=1.0,<2.0
+
+# Local vector database
+chromadb>=0.5,<1.0
+
+# Numerical utilities used by vector operations
+numpy>=1.26,<3.0

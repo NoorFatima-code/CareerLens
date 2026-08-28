@@ -1,0 +1,39 @@
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Streamlit local settings
+.streamlit/
+
+# Uploaded documents and local vector database
+/data/uploads/*
+!/data/uploads/.gitkeep
+/data/chroma_db/*
+!/data/chroma_db/.gitkeep
+
+# Logs, notebooks and local artifacts
+*.log
+.ipynb_checkpoints/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+
+# IDE/editor files
+.vscode/
+.idea/
