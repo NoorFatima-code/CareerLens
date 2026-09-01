@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 import streamlit as st
+import streamlit.components.v1 as components
 from dotenv import load_dotenv
 
 from utils.chunker import chunk_document
@@ -11,6 +12,8 @@ from utils.document_loader import load_cv_document, load_job_description
 from utils.embeddings import generate_embeddings
 from utils.rag_chain import generate_grounded_answer
 from utils.retriever import retrieve_relevant_chunks
+from utils.resume_coach import improve_resume_bullet
+from utils.resume_template import render_resume_html, tailored_resume_to_pdf
 from utils.skill_analyzer import analyze_skill_gap
 from utils.vector_store import ChromaVectorStore
 
@@ -126,6 +129,8 @@ if process_documents and cv_file is not None:
                 "last_results": [],
                 "last_answer": None,
                 "skill_gap_report": None,
+                "resume_report": None,
+                "tailored_resume_report": None,
             }
         )
         st.success(f"Indexed {vector_store.count()} document chunks successfully.")
@@ -175,6 +180,166 @@ if "cv_document" in st.session_state:
         with learning_tab:
             for recommendation in report["learning_recommendations"]:
                 st.write(f"- {recommendation}")
+
+    st.divider()
+    st.markdown("## V3 — Resume Improvement Coach")
+    st.write(
+        "Improve one CV bullet for the target role without inventing or changing facts."
+    )
+    bullet = st.text_area(
+        "Paste one resume bullet",
+        height=120,
+        placeholder="Built a Flask expense tracker with SQLite.",
+    )
+    focus = st.text_input(
+        "Optional improvement focus",
+        placeholder="Emphasize backend development and technical clarity",
+    )
+    improve_button = st.button(
+        "Improve resume bullet",
+        type="primary",
+        disabled=not bullet.strip(),
+    )
+
+    if improve_button:
+        try:
+            with st.spinner("Improving bullet while preserving facts..."):
+                resume_report = improve_resume_bullet(
+                    bullet=bullet,
+                    cv_text=st.session_state["cv_document"]["text"],
+                    job_description=st.session_state["jd_document"]["text"],
+                    focus=focus,
+                )
+            st.session_state["resume_report"] = resume_report
+        except Exception as error:
+            st.error(f"Could not improve resume bullet: {error}")
+
+    resume_report = st.session_state.get("resume_report")
+    if resume_report:
+        if resume_report.get("not_found"):
+            for item in resume_report["not_found"]:
+                st.warning(item)
+        for index, improvement in enumerate(resume_report["improvements"], start=1):
+            st.markdown(f"### Improvement {index}")
+            st.markdown("**Original bullet**")
+            st.write(improvement["original_bullet"])
+            st.markdown("**Improved bullet**")
+            st.success(improvement["improved_bullet"])
+            if improvement["changes_made"]:
+                st.markdown("**Changes made**")
+                for change in improvement["changes_made"]:
+                    st.write(f"- {change}")
+            if improvement["preserved_facts"]:
+                st.markdown("**Preserved facts**")
+                for fact in improvement["preserved_facts"]:
+                    st.write(f"- {fact}")
+            if improvement["missing_information"]:
+                st.markdown("**Missing information**")
+                for missing in improvement["missing_information"]:
+                    st.write(f"- {missing}")
+
+    st.divider()
+    st.markdown("## V3 — Generate Tailored Resume")
+    st.write(
+        "Create a job-specific resume draft from your original CV without inventing unsupported facts."
+    )
+    tailored_focus = st.text_input(
+        "Optional tailoring focus",
+        placeholder="Prioritize backend projects and API experience",
+        key="tailored_resume_focus",
+    )
+    tailor_button = st.button("Generate tailored resume", type="primary")
+
+    if tailor_button:
+        try:
+            with st.spinner("Generating a fact-preserving tailored resume..."):
+                from utils.tailored_resume import generate_tailored_resume
+
+                tailored_report = generate_tailored_resume(
+                    cv_text=st.session_state["cv_document"]["text"],
+                    job_description=st.session_state["jd_document"]["text"],
+                    focus=tailored_focus,
+                )
+            st.session_state["tailored_resume_report"] = tailored_report
+        except Exception as error:
+            st.error(f"Could not generate tailored resume: {error}")
+
+    tailored_report = st.session_state.get("tailored_resume_report")
+    if tailored_report:
+        st.markdown("### Tailored resume preview")
+        st.caption("Original CV remains unchanged. Review the tailored draft before downloading.")
+        components.html(
+            render_resume_html(tailored_report["tailored_resume"]),
+            height=900,
+            scrolling=True,
+        )
+
+        with st.expander("Show editable Markdown text"):
+            st.text_area(
+                "Tailored resume source",
+                tailored_report["tailored_resume"],
+                height=260,
+                key="tailored_resume_source_preview",
+            )
+
+        markdown_sections = [
+            "# Tailored Resume",
+            "",
+            tailored_report["tailored_resume"],
+        ]
+        if tailored_report["changes_made"]:
+            markdown_sections.extend(
+                ["", "## Changes Made", *[f"- {item}" for item in tailored_report["changes_made"]]]
+            )
+        if tailored_report["preserved_facts"]:
+            markdown_sections.extend(
+                ["", "## Preserved Facts", *[f"- {item}" for item in tailored_report["preserved_facts"]]]
+            )
+        if tailored_report["unsupported_requirements"]:
+            markdown_sections.extend(
+                ["", "## Unsupported Requirements Not Added", *[f"- {item}" for item in tailored_report["unsupported_requirements"]]]
+            )
+
+        pdf_bytes = tailored_resume_to_pdf(tailored_report["tailored_resume"])
+        download_column, pdf_column = st.columns(2)
+        with download_column:
+            st.download_button(
+                "Download Markdown",
+                data="\\n".join(markdown_sections),
+                file_name="tailored_resume.md",
+                mime="text/markdown",
+                use_container_width=True,
+            )
+        with pdf_column:
+            st.download_button(
+                "Download PDF",
+                data=pdf_bytes,
+                file_name="tailored_resume.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
+
+        change_tab, facts_tab, safety_tab = st.tabs(
+            ["Changes made", "Preserved facts", "Not added"]
+        )
+        with change_tab:
+            if tailored_report["changes_made"]:
+                for change in tailored_report["changes_made"]:
+                    st.write(f"- {change}")
+            else:
+                st.info("No structural changes were reported.")
+        with facts_tab:
+            if tailored_report["preserved_facts"]:
+                for fact in tailored_report["preserved_facts"]:
+                    st.write(f"- {fact}")
+            else:
+                st.info("No preserved facts were listed by the model.")
+        with safety_tab:
+            if tailored_report["unsupported_requirements"]:
+                for requirement in tailored_report["unsupported_requirements"]:
+                    st.warning(requirement)
+            else:
+                st.success("No unsupported requirements were added to the draft.")
 
     st.divider()
     st.markdown("## V1 — Ask CareerLens")
@@ -228,7 +393,7 @@ if "cv_document" in st.session_state:
         get_vector_store().reset()
         for key in (
             "cv_document", "jd_document", "cv_chunks", "jd_chunks",
-            "last_results", "last_answer", "skill_gap_report",
+            "last_results", "last_answer", "skill_gap_report", "resume_report",
         ):
             st.session_state.pop(key, None)
         st.success("Local vector index reset.")
