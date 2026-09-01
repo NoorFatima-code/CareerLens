@@ -7,6 +7,9 @@ python-dotenv>=1.0,<2.0
 # PDF document loading
 pypdf>=5.0,<6.0
 
+# PDF export
+fpdf2>=2.8,<3.0
+
 # Embeddings and Gemini generation
 google-genai>=1.0,<2.0
 
